@@ -92,11 +92,13 @@ class GCMMessageTests(unittest.TestCase):
 
         update_token_mock.assert_called_once_with("testtoken", "new_token")
 
+    def test_delete_bad_device_token(self):
+        response_template = '{{"results": [{{"error": "{0}"}}], "failure": 1, "canonical_ids": []}}'
 
-    @mock.patch.object(URLFetchServiceStub, "_RetrieveURL", 
-        wraps=get_mock_retrieve_url(content='{"results": [{"message_id": "msg1", "registration_id": "new_token"}], "failure": 0, "canonical_ids": []}'))
-    def test_update_device_token(self, _RetrieveURL):
-        update_token_mock = mock.MagicMock()
-        gcm.GCMMessage('api_key', ['testtoken'], {'message': 'wake up!'}, update_token=update_token_mock).send_message()
+        for error_msg in ['InvalidRegistration', 'MismatchSenderId', 'NotRegistered']:
+            with mock.patch.object(URLFetchServiceStub, "_RetrieveURL",
+                wraps=get_mock_retrieve_url(content=response_template.format(error_msg))):
+                delete_token_mock = mock.MagicMock()
+                gcm.GCMMessage('api_key', ['testtoken'], {'message': 'wake up!'}, delete_bad_token=delete_token_mock).send_message()
 
-        update_token_mock.assert_called_once_with("testtoken", "new_token")
+                delete_token_mock.assert_called_once_with("testtoken")

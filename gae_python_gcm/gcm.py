@@ -9,7 +9,6 @@
 # Further extended by David Neale (neale.dj@gmail.com)
 ################################################################################
 
-from datetime import datetime, timedelta
 import logging
 
 try:
@@ -40,7 +39,7 @@ GCM_QUEUE_NAME = 'gcm-retries'
 
 class GCMMessage:
 
-    def __init__(self, gcm_api_key, device_tokens, notification, collapse_key=None, delay_while_idle=None, time_to_live=None, update_token=None):
+    def __init__(self, gcm_api_key, device_tokens, notification, collapse_key=None, delay_while_idle=None, time_to_live=None, update_token=None, delete_bad_token=None):
         if isinstance(device_tokens, list):
             self.device_tokens = device_tokens
         else:
@@ -52,6 +51,7 @@ class GCMMessage:
         self.delay_while_idle = delay_while_idle
         self.time_to_live = time_to_live
         self.update_token = update_token
+        self.delete_bad_token = delete_bad_token
         self.retries = 0
 
     def __unicode__(self):
@@ -83,11 +83,6 @@ class GCMMessage:
         json_str = json.dumps(json_dict)
         return json_str
 
-
-    ##### Hooks - Override to change functionality #####
-
-    def delete_bad_token(self, bad_device_token):
-        logging.info('delete_bad_token(): ' + repr(bad_device_token))
 
     # Currently unused
     def login_complete(self):
@@ -127,10 +122,8 @@ class GCMMessage:
                     # Handle GCM error
                     error_msg = result.get('error')
                     try:
-                        # TODO: do this via a callback
-                        pass
-                        # device_token = message.device_tokens[result_index]
-                        # self._on_error(device_token, error_msg, message)
+                        device_token = self.device_tokens[result_index]
+                        self._message_error(device_token, error_msg)
                     except:
                         logging.exception('Error handling GCM error: ' + repr(error_msg))
                     return
@@ -198,20 +191,24 @@ class GCMMessage:
             self.retries += 1
         return self.send_message_async().get_result()
 
-    def _on_error(self, device_token, error_msg):
+    def _delete_bad_token(self, device_token):
+        if self.delete_bad_token:
+            self.delete_bad_token(device_token)
+
+    def _message_error(self, device_token, error_msg):
 
         if error_msg == "MissingRegistration":
             logging.error('ERROR: GCM message sent without device token. This should not happen!')
 
         elif error_msg == "InvalidRegistration":
-            self.delete_bad_token(device_token)
+            self._delete_bad_token(device_token)
 
         elif error_msg == "MismatchSenderId":
             logging.error('ERROR: Device token is tied to a different sender id: ' + repr(device_token))
-            self.delete_bad_token(device_token)
+            self._delete_bad_token(device_token)
 
         elif error_msg == "NotRegistered":
-            self.delete_bad_token(device_token)
+            self._delete_bad_token(device_token)
 
         elif error_msg == "MessageTooBig":
             logging.error("ERROR: GCM message too big (max 4096 bytes).")
