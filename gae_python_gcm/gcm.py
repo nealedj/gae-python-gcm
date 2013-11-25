@@ -40,7 +40,7 @@ GCM_QUEUE_NAME = 'gcm-retries'
 
 class GCMMessage:
 
-    def __init__(self, gcm_api_key, device_tokens, notification, collapse_key=None, delay_while_idle=None, time_to_live=None):
+    def __init__(self, gcm_api_key, device_tokens, notification, collapse_key=None, delay_while_idle=None, time_to_live=None, update_token=None):
         if isinstance(device_tokens, list):
             self.device_tokens = device_tokens
         else:
@@ -51,6 +51,7 @@ class GCMMessage:
         self.collapse_key = collapse_key
         self.delay_while_idle = delay_while_idle
         self.time_to_live = time_to_live
+        self.update_token = update_token
         self.retries = 0
 
     def __unicode__(self):
@@ -88,11 +89,6 @@ class GCMMessage:
     def delete_bad_token(self, bad_device_token):
         logging.info('delete_bad_token(): ' + repr(bad_device_token))
 
-    
-    def update_token(self, old_device_token, new_device_token):
-        logging.info('update_token(): ' + repr((old_device_token, new_device_token)))
-
-
     # Currently unused
     def login_complete(self):
         # Retries are handled by the gae task queue
@@ -121,11 +117,8 @@ class GCMMessage:
                 if 'message_id' in result and 'registration_id' in result:
                     # Update device token
                     try:
-                        # TODO: do this via a callback
-                        pass
-                        # old_device_token = message.device_tokens[result_index]
-                        # new_device_token = result['registration_id']
-                        # self.update_token(old_device_token, new_device_token)
+                        if self.update_token:
+                            self.update_token(self.device_tokens[result_index], result['registration_id'])
                     except:
                         logging.exception('Error updating device token')
                     return

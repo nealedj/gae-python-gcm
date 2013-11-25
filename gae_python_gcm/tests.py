@@ -83,3 +83,20 @@ class GCMMessageTests(unittest.TestCase):
             invoke_member, args, kwargs = pickle.loads(base64.b64decode(tasks[0]['body']))
             invoke_member(*args, **kwargs)
             self.taskqueue_stub.DeleteTask(gcm.GCM_QUEUE_NAME, tasks[0]['name'])
+
+    @mock.patch.object(URLFetchServiceStub, "_RetrieveURL", 
+        wraps=get_mock_retrieve_url(content='{"results": [{"message_id": "msg1", "registration_id": "new_token"}], "failure": 0, "canonical_ids": []}'))
+    def test_update_device_token(self, _RetrieveURL):
+        update_token_mock = mock.MagicMock()
+        gcm.GCMMessage('api_key', ['testtoken'], {'message': 'wake up!'}, update_token=update_token_mock).send_message()
+
+        update_token_mock.assert_called_once_with("testtoken", "new_token")
+
+
+    @mock.patch.object(URLFetchServiceStub, "_RetrieveURL", 
+        wraps=get_mock_retrieve_url(content='{"results": [{"message_id": "msg1", "registration_id": "new_token"}], "failure": 0, "canonical_ids": []}'))
+    def test_update_device_token(self, _RetrieveURL):
+        update_token_mock = mock.MagicMock()
+        gcm.GCMMessage('api_key', ['testtoken'], {'message': 'wake up!'}, update_token=update_token_mock).send_message()
+
+        update_token_mock.assert_called_once_with("testtoken", "new_token")
