@@ -19,6 +19,8 @@ except ImportError:
 from google.appengine.api import urlfetch, taskqueue
 from google.appengine.ext import deferred
 
+import gcm_exceptions
+
 DEBUG = False
 
 try: 
@@ -55,10 +57,7 @@ class GCMMessage:
         self.retries = 0
 
     def json_string(self):
-
-        if not self.device_tokens or not isinstance(self.device_tokens, list):
-            logging.error('GCMMessage generate_json_string error. Invalid device tokens: ' + repr(self))
-            raise Exception('GCMMessage generate_json_string error. Invalid device tokens.')
+        assert self.device_tokens and isinstance(self.device_tokens, list), "GCMMessage.json_string error. Invalid device tokens"
 
         json_dict = {} 
         json_dict['registration_ids'] = self.device_tokens
@@ -120,7 +119,7 @@ class GCMMessage:
         if resp.status_code == 200:
             self._process_successful_response(resp)
         elif resp.status_code == 400:
-            logging.error('400, Invalid GCM JSON message: ' + repr(gcm_post_json_str))
+            raise gcm_exceptions.BadRequestException(gcm_post_json_str)
         elif resp.status_code == 401:
             logging.error('401, Error authenticating with GCM. Retrying message. Might need to fix auth key! This is retry {0}'.format(self.retries))
             deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*10)
@@ -129,7 +128,7 @@ class GCMMessage:
             logging.error('503, Throttled. Retry after delay. Requeuing message. Delay in seconds: {0}. This is retry {1}'.format(retry_seconds, self.retries+1))
             deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*retry_seconds)
         elif 500 <= resp.status_code < 600:
-            logging.error('{0}, Internal error in the GCM server while trying to send message: {1}'.format(resp.status_code, repr(gcm_post_json_str)))
+            raise gcm_exceptions.InternalServerErrorException('{0}, Internal error in the GCM server while trying to send message: {1}'.format(resp.status_code, repr(gcm_post_json_str)))
 
 
     # Try sending message now
@@ -170,7 +169,7 @@ class GCMMessage:
     def _message_error(self, device_token, error_msg):
 
         if error_msg == "MissingRegistration":
-            logging.error('ERROR: GCM message sent without device token. This should not happen!')
+            raise gcm_exceptions.MissingRegistrationException
 
         elif error_msg == "InvalidRegistration":
             self._delete_bad_token(device_token)
@@ -183,13 +182,10 @@ class GCMMessage:
             self._delete_bad_token(device_token)
 
         elif error_msg == "MessageTooBig":
-            logging.error("ERROR: GCM message too big (max 4096 bytes).")
+            raise gcm_exceptions.MessageTooBigException
 
         elif error_msg == "InvalidTtl":
-            logging.error("ERROR: GCM Time to Live field must be an integer representing a duration in seconds between 0 and 2,419,200 (4 weeks).")
-
-        elif error_msg == "MessageTooBig":
-            logging.error("ERROR: GCM message too big (max 4096 bytes).")
+            raise gcm_exceptions.InvalidTtlException
 
         elif error_msg == "Unavailable":
             retry_seconds = 10
@@ -197,10 +193,10 @@ class GCMMessage:
             deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*retry_seconds)
         
         elif error_msg == "InternalServerError":
-            logging.error("ERROR: Internal error in the GCM server while trying to send message: " + repr(self))
+            raise gcm_exceptions.InternalServerErrorException("ERROR: Internal error in the GCM server while trying to send message: " + repr(self))
 
         else:
-            logging.error("Unknown error: %s for device token: %s" % (repr(error_msg), repr(device_token)))
+            raise gcm_exceptions.GCMException("Unknown error: %s for device token: %s" % (repr(error_msg), repr(device_token)))
 
 
 
