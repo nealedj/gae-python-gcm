@@ -54,9 +54,6 @@ class GCMMessage:
         self.delete_bad_token = delete_bad_token
         self.retries = 0
 
-    def __unicode__(self):
-        return "%s:%s:%s:%s:%s" % (repr(self.device_tokens), repr(self.notification), repr(self.collapse_key), repr(self.delay_while_idle), repr(self.time_to_live))
-
     def json_string(self):
 
         if not self.device_tokens or not isinstance(self.device_tokens, list):
@@ -84,22 +81,12 @@ class GCMMessage:
         return json_str
 
     def _process_successful_response(self, resp):
-        resp_json_str = resp.content
-        resp_json = json.loads(resp_json_str)
-        logging.info('_send_request() resp_json: ' + repr(resp_json))
+        resp_json = json.loads(resp.content)
+        logging.info('_process_successful_response() resp_json: ' + repr(resp_json))
 
-        failure = resp_json['failure']
-        canonical_ids = resp_json['canonical_ids']
-        results = resp_json['results']
-
-        # If the value of failure and canonical_ids is 0, it's not necessary to parse the remainder of the response.
-        if failure == 0 and canonical_ids == 0:
-            # Success, nothing to do
-            return
-        else:
+        if resp_json.get('failure') or resp_json.get('canonical_ids'):
             # Process result messages for each token (result index matches original token index from message) 
-            result_index = 0
-            for result in results:
+            for result_index, result in enumerate(resp_json.get('results', [])):
 
                 if 'message_id' in result and 'registration_id' in result:
                     # Update device token
@@ -153,26 +140,19 @@ class GCMMessage:
 
     # Try sending message now
     def send_message_async(self):
-        if self.device_tokens == None or self.notification == None:
-            logging.error('Message must contain device_tokens and notification.')
-            return False
+        assert self.device_tokens and self.notification, 'Message must contain device_tokens and notification.'
 
-        # Build request
-        headers = {
-                   'Authorization': 'key=' + self.gcm_api_key,
-                   'Content-Type': 'application/json'
-                   }
+        rpc = urlfetch.create_rpc()
 
-        gcm_post_json_str = ''
-        try:
-            gcm_post_json_str = self.json_string()
-        except:
-            logging.exception('Error generating json string for message: ' + repr(self))
-            return
+        gcm_post_json_str = self.json_string()
 
         logging.info('Sending gcm_post_body: ' + repr(gcm_post_json_str))
 
-        rpc = urlfetch.create_rpc()
+        headers = {
+            'Authorization': 'key=' + self.gcm_api_key,
+            'Content-Type': 'application/json'
+        }
+
         rpc.callback = lambda: self.process_message_response(rpc, gcm_post_json_str)
         urlfetch.make_fetch_call(rpc, GOOGLE_GCM_SEND_URL, payload=gcm_post_json_str, headers=headers, method=urlfetch.POST)
 

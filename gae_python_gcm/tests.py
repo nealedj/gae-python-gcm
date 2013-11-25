@@ -10,7 +10,7 @@ from google.appengine.api.urlfetch_stub import URLFetchServiceStub
 from google.appengine.ext import testbed
 
 
-def get_mock_retrieve_url(status_code=200, content='{"results": [], "failure": 0, "canonical_ids": []}', headers={}):
+def get_mock_retrieve_url(status_code=200, content='{"results": [], "failure": 0, "canonical_ids": 0}', headers={}):
     override_headers = headers
     def _mock_retrieve_url(url, payload, method, headers, request, response, *args, **kwargs):
         response.set_content(content)
@@ -85,7 +85,7 @@ class GCMMessageTests(unittest.TestCase):
             self.taskqueue_stub.DeleteTask(gcm.GCM_QUEUE_NAME, tasks[0]['name'])
 
     @mock.patch.object(URLFetchServiceStub, "_RetrieveURL", 
-        wraps=get_mock_retrieve_url(content='{"results": [{"message_id": "msg1", "registration_id": "new_token"}], "failure": 0, "canonical_ids": []}'))
+        wraps=get_mock_retrieve_url(content='{"results": [{"message_id": "msg1", "registration_id": "new_token"}], "failure": 0, "canonical_ids": 1}'))
     def test_update_device_token(self, _RetrieveURL):
         update_token_mock = mock.MagicMock()
         gcm.GCMMessage('api_key', ['testtoken'], {'message': 'wake up!'}, update_token=update_token_mock).send_message()
@@ -93,7 +93,7 @@ class GCMMessageTests(unittest.TestCase):
         update_token_mock.assert_called_once_with("testtoken", "new_token")
 
     def test_delete_bad_device_token(self):
-        response_template = '{{"results": [{{"error": "{0}"}}], "failure": 1, "canonical_ids": []}}'
+        response_template = '{{"results": [{{"error": "{0}"}}], "failure": 1, "canonical_ids": 0}}'
 
         for error_msg in ['InvalidRegistration', 'MismatchSenderId', 'NotRegistered']:
             with mock.patch.object(URLFetchServiceStub, "_RetrieveURL",
