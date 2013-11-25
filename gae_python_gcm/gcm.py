@@ -80,6 +80,11 @@ class GCMMessage:
         json_str = json.dumps(json_dict)
         return json_str
 
+    @property
+    def is_deferred(self):
+        # dirty way to work out if this message is executing within a deferred task
+        return bool(self.retries)
+
     def _process_successful_response(self, resp):
         resp_json = json.loads(resp.content)
         logging.info('_process_successful_response() resp_json: ' + repr(resp_json))
@@ -110,32 +115,21 @@ class GCMMessage:
                 result_index += 1
 
     def process_message_response(self, rpc, gcm_post_json_str):
-        # Post
-        try:
-            resp = rpc.get_result()
+        resp = rpc.get_result()
 
-            if resp.status_code == 200:
-                self._process_successful_response(resp)
-            elif resp.status_code == 400:
-                logging.error('400, Invalid GCM JSON message: ' + repr(gcm_post_json_str))
-            elif resp.status_code == 401:
-                logging.error('401, Error authenticating with GCM. Retrying message. Might need to fix auth key! This is retry {0}'.format(self.retries))
-                try:
-                    deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*10)
-                except taskqueue.UnknownQueueError:
-                    logging.error("ERROR: could not defer task as queue %s doesn't exist" % GCM_QUEUE_NAME)
-            elif resp.status_code == 503:
-                retry_seconds = int(resp.headers.get('Retry-After', 10))
-                logging.error('503, Throttled. Retry after delay. Requeuing message. Delay in seconds: {0}. This is retry {1}'.format(retry_seconds, self.retries+1))
-                try:
-                    deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*retry_seconds)
-                except taskqueue.UnknownQueueError:
-                    logging.error("ERROR: could not defer task as queue %s doesn't exist" % GCM_QUEUE_NAME)
-            elif 500 <= resp.status_code < 600:
-                logging.error('{0}, Internal error in the GCM server while trying to send message: {1}'.format(resp.status_code, repr(gcm_post_json_str)))
-
-        except urlfetch.Error, e:
-            logging.exception('Unexpected urlfetch Error: ' + repr(e))
+        if resp.status_code == 200:
+            self._process_successful_response(resp)
+        elif resp.status_code == 400:
+            logging.error('400, Invalid GCM JSON message: ' + repr(gcm_post_json_str))
+        elif resp.status_code == 401:
+            logging.error('401, Error authenticating with GCM. Retrying message. Might need to fix auth key! This is retry {0}'.format(self.retries))
+            deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*10)
+        elif resp.status_code == 503:
+            retry_seconds = int(resp.headers.get('Retry-After', 10))
+            logging.error('503, Throttled. Retry after delay. Requeuing message. Delay in seconds: {0}. This is retry {1}'.format(retry_seconds, self.retries+1))
+            deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*retry_seconds)
+        elif 500 <= resp.status_code < 600:
+            logging.error('{0}, Internal error in the GCM server while trying to send message: {1}'.format(resp.status_code, repr(gcm_post_json_str)))
 
 
     # Try sending message now
@@ -161,7 +155,13 @@ class GCMMessage:
     def send_message(self, retry=False):
         if retry:
             self.retries += 1
-        return self.send_message_async().get_result()
+        try:
+            return self.send_message_async().get_result()
+        except Exception, e:
+            if self.is_deferred:
+                logging.exception(e)
+            else:
+                raise
 
     def _delete_bad_token(self, device_token):
         if self.delete_bad_token:
@@ -194,10 +194,7 @@ class GCMMessage:
         elif error_msg == "Unavailable":
             retry_seconds = 10
             logging.error('ERROR: GCM Unavailable. Retry after delay. Requeuing message. Delay in seconds: {0}. This is retry {1}'.format(retry_seconds, self.retries+1))
-            try:
-                deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*retry_seconds)
-            except taskqueue.UnknownQueueError:
-                logging.error("ERROR: could not defer task as queue %s doesn't exist" % GCM_QUEUE_NAME)
+            deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*retry_seconds)
         
         elif error_msg == "InternalServerError":
             logging.error("ERROR: Internal error in the GCM server while trying to send message: " + repr(self))
