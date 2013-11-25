@@ -83,14 +83,6 @@ class GCMMessage:
         json_str = json.dumps(json_dict)
         return json_str
 
-
-    # Currently unused
-    def login_complete(self):
-        # Retries are handled by the gae task queue
-        # self.retry_pending_messages()
-        pass
-
-
     def _process_successful_response(self, resp):
         resp_json_str = resp.content
         resp_json = json.loads(resp_json_str)
@@ -145,8 +137,6 @@ class GCMMessage:
                     deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*10)
                 except taskqueue.UnknownQueueError:
                     logging.error("ERROR: could not defer task as queue %s doesn't exist" % GCM_QUEUE_NAME)
-            elif resp.status_code == 500:
-                logging.error('500, Internal error in the GCM server while trying to send message: ' + repr(gcm_post_json_str))
             elif resp.status_code == 503:
                 retry_seconds = int(resp.headers.get('Retry-After', 10))
                 logging.error('503, Throttled. Retry after delay. Requeuing message. Delay in seconds: {0}. This is retry {1}'.format(retry_seconds, self.retries+1))
@@ -154,6 +144,8 @@ class GCMMessage:
                     deferred.defer(self.send_message, retry=True, _queue=GCM_QUEUE_NAME, _countdown=2**self.retries*retry_seconds)
                 except taskqueue.UnknownQueueError:
                     logging.error("ERROR: could not defer task as queue %s doesn't exist" % GCM_QUEUE_NAME)
+            elif 500 <= resp.status_code < 600:
+                logging.error('{0}, Internal error in the GCM server while trying to send message: {1}'.format(resp.status_code, repr(gcm_post_json_str)))
 
         except urlfetch.Error, e:
             logging.exception('Unexpected urlfetch Error: ' + repr(e))
