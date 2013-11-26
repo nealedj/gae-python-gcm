@@ -16,7 +16,7 @@ try:
 except ImportError:
     import simplejson as json
 
-from google.appengine.api import urlfetch, taskqueue
+from google.appengine.api import urlfetch
 from google.appengine.ext import deferred
 
 import gcm_exceptions
@@ -26,7 +26,6 @@ DEBUG = False
 try: 
     from settings import DEBUG
 except:
-    logging.info('GCM settings module not found. Using defaults.')
     pass
 
 GOOGLE_LOGIN_URL = 'https://www.google.com/accounts/ClientLogin'
@@ -164,6 +163,7 @@ class GCMMessage:
 
     def _delete_bad_token(self, device_token):
         if self.delete_bad_token:
+            logging.error('Deleting token {0}'.format(repr(device_token)))
             self.delete_bad_token(device_token)
 
     def _message_error(self, device_token, error_msg):
@@ -172,13 +172,15 @@ class GCMMessage:
             raise gcm_exceptions.MissingRegistrationException
 
         elif error_msg == "InvalidRegistration":
+            logging.error('ERROR: Device token is invalid: {0}'.format(repr(device_token)))
             self._delete_bad_token(device_token)
 
         elif error_msg == "MismatchSenderId":
-            logging.error('ERROR: Device token is tied to a different sender id: ' + repr(device_token))
+            logging.error('ERROR: Device token is tied to a different sender id: {0}'.format(repr(device_token)))
             self._delete_bad_token(device_token)
 
         elif error_msg == "NotRegistered":
+            logging.error('ERROR: Device token not registered: {0}'.format(repr(device_token)))
             self._delete_bad_token(device_token)
 
         elif error_msg == "MessageTooBig":
@@ -186,6 +188,9 @@ class GCMMessage:
 
         elif error_msg == "InvalidTtl":
             raise gcm_exceptions.InvalidTtlException
+
+        elif error_msg == "InvalidDataKey":
+            raise gcm_exceptions.InvalidDataKeyException
 
         elif error_msg == "Unavailable":
             retry_seconds = 10
