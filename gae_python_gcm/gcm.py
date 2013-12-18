@@ -40,7 +40,8 @@ GCM_QUEUE_NAME = 'gcm-retries'
 
 class GCMMessage:
 
-    def __init__(self, gcm_api_key, device_tokens, notification, collapse_key=None, delay_while_idle=None, time_to_live=None, update_token=None, delete_bad_token=None):
+    def __init__(self, gcm_api_key, device_tokens, notification, collapse_key=None, delay_while_idle=None, time_to_live=None,
+        update_token=None, delete_bad_token=None, callback_kwargs=None):
         if isinstance(device_tokens, list):
             self.device_tokens = device_tokens
         else:
@@ -53,6 +54,7 @@ class GCMMessage:
         self.time_to_live = time_to_live
         self.update_token = update_token
         self.delete_bad_token = delete_bad_token
+        self.callback_kwargs = callback_kwargs or {}
         self.retries = 0
 
         self.verify_is_pickleable()
@@ -101,7 +103,7 @@ class GCMMessage:
                     # Update device token
                     try:
                         if self.update_token:
-                            self.update_token(self.device_tokens[result_index], result['registration_id'])
+                            self.update_token(self.device_tokens[result_index], result['registration_id'], **self.callback_kwargs)
                     except:
                         logging.exception('Error updating device token')
                     return
@@ -170,7 +172,7 @@ class GCMMessage:
     def _delete_bad_token(self, device_token):
         if self.delete_bad_token:
             logging.error('Deleting token {0}'.format(repr(device_token)))
-            self.delete_bad_token(device_token)
+            self.delete_bad_token(device_token, **self.callback_kwargs)
 
     def _message_error(self, device_token, error_msg):
 
