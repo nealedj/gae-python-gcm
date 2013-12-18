@@ -1,10 +1,10 @@
 
-from gae_python_gcm.gcm import GCMMessage, GCMConnection
+from gae_python_gcm.gcm import GCMMessage
 
-push_token = 'YOUR_PUSH_TOKEN'
-android_payload = {'your-key': 'your-value'}
+GCM_API_KEY = 'YOUR_API_KEY'
 
-gcm_message = GCMMessage(push_token, android_payload)
-gcm_conn = GCMConnection()
-logging.info("Attempting to send Android push notification %s to push_token %s." % (repr(android_payload), repr(push_token)))
-gcm_conn.notify_device(gcm_message)
+push_token = 'GCM_REGISTRATION_ID'
+notification_payload = {'your-key': 'your-value'}
+
+gcm_message = GCMMessage(GCM_API_KEY, push_token, notification_payload)
+gcm_message.send_message()
