@@ -1,6 +1,0 @@
-# Lines that start with '#' are comments.
-*~
-.project
-.settings
-.pydevproject
-*.pyc
