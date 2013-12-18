@@ -10,7 +10,7 @@
 ################################################################################
 
 import logging
-
+import pickle
 try:
     import json
 except ImportError:
@@ -54,6 +54,12 @@ class GCMMessage:
         self.update_token = update_token
         self.delete_bad_token = delete_bad_token
         self.retries = 0
+
+        self.verify_is_pickleable()
+
+    def verify_is_pickleable(self):
+        """Try to serialise the object"""
+        pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL)
 
     def json_string(self):
         assert self.device_tokens and isinstance(self.device_tokens, list), "GCMMessage.json_string error. Invalid device tokens"
